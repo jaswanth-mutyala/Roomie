@@ -48,6 +48,19 @@ export function GroupsSheet({
     if (id) onOpenGroup(id);
   };
 
+  const [joining, setJoining] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+
+  const submitJoin = async () => {
+    if (!joinCode.trim()) return;
+    const id = await actions.joinGroup(joinCode.trim());
+    if (id) {
+      setJoinCode("");
+      setJoining(false);
+      onOpenGroup(id);
+    }
+  };
+
   return (
     <AnimatePresence>
       {open && (
@@ -73,7 +86,28 @@ export function GroupsSheet({
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-2.5">
+              <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-2.5 mt-2">
+                <button
+                  onClick={() => setCreating(true)}
+                  className="w-full h-16 rounded-[20px] bg-[#B5A8FF] border-2 border-black flex items-center justify-between px-5 mb-3 group"
+                  style={{ boxShadow: "4px 4px 0 0 rgba(0,0,0,1)" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-black flex items-center justify-center text-white">
+                      <Plus size={16} />
+                    </div>
+                    <span className="text-black" style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>Create new group</span>
+                  </div>
+                  <ArrowRight size={18} className="text-black group-hover:translate-x-1 transition-transform" />
+                </button>
+
+                <button
+                  onClick={() => setJoining(true)}
+                  className="w-full h-14 rounded-[20px] bg-white border-2 border-black border-dashed flex items-center justify-center px-5 mb-5 group text-black/60 hover:text-black hover:border-solid hover:bg-black/5 transition-all"
+                >
+                  <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>Enter invite code or link</span>
+                </button>
+
                 {groups.map((g) => {
                   const burn = groupBurn(g.id);
                   return (
@@ -116,15 +150,61 @@ export function GroupsSheet({
                   );
                 })}
 
-                {!creating && (
+                {!creating && !joining && (
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     onClick={() => setCreating(true)}
-                    className="w-full rounded-[22px] border-2 border-dashed border-black/40 bg-white/50 p-4 flex items-center gap-3 justify-center text-black/60"
+                    className="w-full rounded-[22px] border-2 border-dashed border-black/40 bg-white/50 p-4 flex items-center gap-3 justify-center text-black/60 hidden hidden" // kept hidden here because it's available at the top now
                   >
                     <Plus size={18} />
                     <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13 }}>Create a new group</span>
                   </motion.button>
+                )}
+
+                {joining && (
+                  <motion.div
+                    initial={{ y: 8, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="rounded-[22px] border-2 border-black bg-white p-5 space-y-4"
+                    style={{ boxShadow: "4px 4px 0 0 rgba(0,0,0,1)" }}
+                  >
+                    <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>Join a Group</h3>
+                    <input
+                      autoFocus
+                      value={joinCode}
+                      onChange={(e) => setJoinCode(e.target.value)}
+                      placeholder="Paste code or link here..."
+                      className="w-full h-[52px] rounded-2xl border-2 border-black px-4 bg-[#FFFBF2] outline-none placeholder:text-black/30"
+                      style={{ fontFamily: "'Inter', sans-serif", fontSize: 14 }}
+                    />
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={submitJoin}
+                        disabled={!joinCode.trim()}
+                        className="w-full h-12 rounded-full border-2 border-black transition-all"
+                        style={{
+                          backgroundColor: joinCode.trim() ? "#74FF5A" : "#eee",
+                          boxShadow: joinCode.trim() ? "3px 3px 0 0 rgba(0,0,0,1)" : "none",
+                          fontFamily: "'Space Grotesk', sans-serif",
+                          fontWeight: 700,
+                          fontSize: 14,
+                          opacity: joinCode.trim() ? 1 : 0.6,
+                        }}
+                      >
+                        Join Roomie Group
+                      </button>
+                      <button
+                        onClick={() => {
+                          setJoining(false);
+                          setJoinCode("");
+                        }}
+                        className="w-full h-12 rounded-full border-2 border-transparent hover:border-black/10 bg-black/5"
+                        style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14 }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </motion.div>
                 )}
 
                 {creating && (

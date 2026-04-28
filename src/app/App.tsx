@@ -103,6 +103,23 @@ export default function App() {
           }
         }, 500);
       }
+
+      // Check for ?join= code
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinCode = urlParams.get("join");
+        if (joinCode && session) {
+          setTimeout(async () => {
+            const groupId = await actions.joinGroup(joinCode);
+            if (groupId) {
+              setDetailGroupId(groupId);
+            }
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }, 500);
+        }
+      } catch (e) {
+        // ignore
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {

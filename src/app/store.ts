@@ -266,8 +266,42 @@ export const actions = {
       recurring: s.recurring.filter((r) => r.groupId !== id),
     }));
     toast("Group deleted", "#FF5C39");
-  },
-  exitGroup: async (id: string) => {
+  },  joinGroup: async (codeOrId: string) => {
+    let groupId = codeOrId.trim();
+    // parse RM-XXXX42 into gXXXX format
+    if (groupId.toUpperCase().startsWith("RM-") && groupId.endsWith("42")) {
+      const rawNum = groupId.substring(3, groupId.length - 2);
+      groupId = "g" + rawNum.toLowerCase();
+    } else if (groupId.includes("?join=")) {
+      try {
+        const url = new URL(groupId);
+        groupId = url.searchParams.get("join") || groupId;
+      } catch (e) {
+        groupId = groupId.split("?join=")[1].split("&")[0] || groupId;
+      }
+    }
+
+    if (state.groups.some(g => g.id === groupId)) {
+      toast("You are already in this group!", "#FFD84D");
+      return groupId;
+    }
+
+    const { data: gData, error: gError } = await supabase.from("groups").select("*").eq("id", groupId).single();
+    if (gError || !gData) {
+      toast("Invalid code or group not found.", "#FF5C39");
+      return null;
+    }
+
+    const res = await supabase.from("group_members").insert({ group_id: groupId, user_id: toDbId("me") });
+    if (res.error && res.error.code !== "23505") {
+      toast("DB Error: " + res.error.message, "#FF5C39");
+      return null;
+    }
+
+    await actions.fetchData();
+    toast(`Joined ${gData.name} 🎉`, "#74FF5A");
+    return groupId;
+  },  exitGroup: async (id: string) => {
     const res = await supabase.from("group_members").delete().eq("group_id", id).eq("user_id", toDbId("me"));
     if (res.error) { toast("DB Error: " + res.error.message, "#FF5C39"); return; }
 
