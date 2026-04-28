@@ -489,28 +489,30 @@ function Inner({
                             </div>
                           )}
                           
-                          <div className="mt-3 pt-3 border-t border-black/10 flex gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (onEditBill) onEditBill(g.id, b.id);
-                              }}
-                              className="flex-1 h-8 rounded-full border border-black/20 bg-white text-black/70"
-                              style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 11 }}
-                            >
-                              Edit Split
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSplitToDelete(b.id);
-                              }}
-                              className="flex-1 h-8 rounded-full border border-[#FF5C39]/20 bg-white text-[#FF5C39]/70 hover:bg-[#FF5C39]/5 transition-colors"
-                              style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 11 }}
-                            >
-                              Delete Split
-                            </button>
-                          </div>
+                          {myPaid > 0 && (
+                            <div className="mt-3 pt-3 border-t border-black/10 flex gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onEditBill) onEditBill(g.id, b.id);
+                                }}
+                                className="flex-1 h-8 rounded-full border border-black/20 bg-white text-black/70"
+                                style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 11 }}
+                              >
+                                Edit Split
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSplitToDelete(b.id);
+                                }}
+                                className="flex-1 h-8 rounded-full border border-[#FF5C39]/20 bg-white text-[#FF5C39]/70 hover:bg-[#FF5C39]/5 transition-colors"
+                                style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 11 }}
+                              >
+                                Delete Split
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )}
