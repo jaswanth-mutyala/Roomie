@@ -52,7 +52,7 @@ export function SplitSheet({
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
-  const [recurringDay, setRecurringDay] = useState(1);
+  const [recurringDay, setRecurringDay] = useState<number | "">("");
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -100,7 +100,7 @@ export function SplitSheet({
         setPayers({ [meId]: "0" });
         setIsRecurring(false);
         setFrequency("monthly");
-        setRecurringDay(1);
+        setRecurringDay("");
         setTitle("");
         const gId = initialGroupId || groups[0]?.id;
         if (gId) {
@@ -206,7 +206,7 @@ export function SplitSheet({
         category,
         amount: total,
         frequency,
-        day: recurringDay,
+        day: Number(recurringDay) || 1,
         paused: false,
         payerId: mainPayerId,
         splitAmong: selected,
@@ -540,16 +540,23 @@ export function SplitSheet({
                           </div>
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => setRecurringDay((d) => Math.max(1, d - 1))}
+                              onClick={() => setRecurringDay((d) => (d === "" ? 1 : Math.max(1, typeof d === "number" ? d - 1 : 1)))}
                               className="h-8 w-8 rounded-full border-2 border-black bg-white flex items-center justify-center"
                               style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, boxShadow: "2px 2px 0 0 rgba(0,0,0,1)" }}
                             >−</button>
-                            <div className="flex-1 h-8 rounded-full border-2 border-black bg-white flex items-center justify-center tabular-nums"
-                              style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>
-                              {recurringDay}
-                            </div>
+                            <input
+                              type="number"
+                              value={recurringDay}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setRecurringDay(val === "" ? "" : isNaN(Number(val)) ? 1 : Number(val));
+                              }}
+                              placeholder="1"
+                              className="flex-1 h-8 rounded-full border-2 border-black bg-white flex items-center justify-center tabular-nums text-center outline-none placeholder:text-black/30"
+                              style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}
+                            />
                             <button
-                              onClick={() => setRecurringDay((d) => Math.min(31, d + 1))}
+                              onClick={() => setRecurringDay((d) => (d === "" ? 1 : Math.min(31, typeof d === "number" ? d + 1 : 1)))}
                               className="h-8 w-8 rounded-full border-2 border-black bg-white flex items-center justify-center"
                               style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, boxShadow: "2px 2px 0 0 rgba(0,0,0,1)" }}
                             >+</button>
@@ -570,7 +577,7 @@ export function SplitSheet({
                 <Camera size={20} className="text-white" />
               </button>
               <div className="flex-1">
-                <SwipeToSplit disabled={!paidMatches || total <= 0 || chosen.length === 0} label={billToEdit ? "Swipe to update" : isRecurring ? "Swipe to schedule" : "Swipe to split"} onComplete={commit} color={isRecurring ? "#B5A8FF" : "#74FF5A"} />
+                <SwipeToSplit disabled={!paidMatches || total <= 0 || chosen.length === 0 || !title.trim() || (isRecurring && recurringDay === "")} label={billToEdit ? "Swipe to update" : isRecurring ? "Swipe to schedule" : "Swipe to split"} onComplete={commit} color={isRecurring ? "#B5A8FF" : "#74FF5A"} />
               </div>
             </div>
           </div>

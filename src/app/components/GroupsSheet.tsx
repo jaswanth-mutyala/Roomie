@@ -154,7 +154,7 @@ export function GroupsSheet({
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     onClick={() => setCreating(true)}
-                    className="w-full rounded-[22px] border-2 border-dashed border-black/40 bg-white/50 p-4 flex items-center gap-3 justify-center text-black/60 hidden hidden" // kept hidden here because it's available at the top now
+                    className="w-full rounded-[22px] border-2 border-dashed border-black/40 bg-white/50 p-4 flex items-center gap-3 justify-center text-black/60 hidden" // kept hidden here because it's available at the top now
                   >
                     <Plus size={18} />
                     <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13 }}>Create a new group</span>
@@ -191,7 +191,7 @@ export function GroupsSheet({
                           opacity: joinCode.trim() ? 1 : 0.6,
                         }}
                       >
-                        Join Roomie Group
+                        Join Group
                       </button>
                       <button
                         onClick={() => {

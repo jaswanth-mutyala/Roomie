@@ -158,6 +158,15 @@ export default function App() {
     setOnboarded(readStoredBool(`roomie.onboarded.${session.user.id}.v1`));
   }, [session?.user?.id]);
 
+  useEffect(() => {
+    if (session?.user?.id) {
+      const unsubscribe = actions.subscribeNotifications(session.user.id);
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    }
+  }, [session?.user?.id]);
+
   const finishTour = () => {
     writeStoredBool("roomie.tourDone.v1", true);
     setTourDone(true);

@@ -302,7 +302,7 @@ export const actions = {
     // Now that we're a member, we can fetch the group info (RLS will permit this)
     const { data: gData, error: gError } = await supabase.from("groups").select("name").eq("id", groupId).single();
     
-    await actions.fetchData();
+    await actions.sync();
     toast(`Joined ${gData?.name || "group"} 🎉`, "#74FF5A");
     return groupId;
   },  exitGroup: async (id: string) => {
@@ -383,18 +383,16 @@ export const actions = {
     update((s) => ({ ...s, bills: [bill, ...s.bills] }));
     toast(`Split ₹${b.amount} — done 💸`, "#74FF5A");
     const groupMembers = group?.members || [];
-    const myId = get().me.id;
+    const myId = state.me.id;
     groupMembers.forEach(m => {
-      if (m.id !== myId) {
-        actions.pushNotification({
-          kind: "info",
-          name: get().me.name,
-          color: get().me.color,
-          title: "added " + b.title,
-          sub: "₹" + b.amount.toLocaleString() + " · " + (group?.name || "Group"),
-          action: { type: "bill", id: bill.id, groupId: b.groupId },
-        }, m.id);
-      }
+      actions.pushNotification({
+        kind: "info",
+        name: state.me.name,
+        color: state.me.color,
+        title: "added " + b.title,
+        sub: "₹" + b.amount.toLocaleString() + " · " + (group?.name || "Group"),
+        action: { type: "bill", id: bill.id, groupId: b.groupId },
+      }, m.id);
     });
   },
   updateBill: async (id: string, b: Omit<Bill, "id" | "date">) => {
@@ -416,18 +414,16 @@ export const actions = {
     }));
     toast(`Updated ${b.title} 📝`, "#74FF5A");
     const groupMembers = group?.members || [];
-    const myId = get().me.id;
+    const myId = state.me.id;
     groupMembers.forEach(m => {
-      if (m.id !== myId) {
-        actions.pushNotification({
-          kind: "info",
-          name: get().me.name,
-          color: get().me.color,
-          title: "updated " + b.title,
-          sub: "₹" + b.amount.toLocaleString() + " · " + (group?.name || "Group"),
-          action: { type: "bill", id, groupId: b.groupId },
-        }, m.id);
-      }
+      actions.pushNotification({
+        kind: "info",
+        name: state.me.name,
+        color: state.me.color,
+        title: "updated " + b.title,
+        sub: "₹" + b.amount.toLocaleString() + " · " + (group?.name || "Group"),
+        action: { type: "bill", id, groupId: b.groupId },
+      }, m.id);
     });
   },
   deleteBill: async (id: string) => {
@@ -515,15 +511,13 @@ export const actions = {
     }));
     const toMember = state.groups.flatMap((g) => g.members).find((m) => m.id === to);
     toast(`Paid ₹${normalizedAmount.toFixed(2)} to ${toMember?.name || "them"}`, "#74FF5A");
-    if (to !== myId) {
-      actions.pushNotification({
-        kind: "success",
-        name: get().me.name,
-        color: get().me.color,
-        title: "Paid you ₹" + normalizedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        sub: "Settlement in " + (state.groups.find(g => g.id === groupId)?.name || "group"),
-      }, to);
-    }
+    actions.pushNotification({
+      kind: "success",
+      name: state.me.name,
+      color: state.me.color,
+      title: "Paid you ₹" + normalizedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      sub: "Settlement in " + (state.groups.find(g => g.id === groupId)?.name || "group"),
+    }, to);
   },
   toggleRecurring: async (id: string) => {
     const r = state.recurring.find(x => x.id === id);
@@ -589,13 +583,14 @@ export const actions = {
   },
   markNotifsRead: async () => {
     update((s) => ({ ...s, notifications: s.notifications.map((n) => ({ ...n, unread: false })) }));
-    const myId = get().me.id;
+    const myId = state.me.id;
     await supabase.from("notifications").update({ unread: false }).eq("user_id", myId);
   },
   pushNotification: async (n: Omit<Notification, "id" | "time" | "unread">, forUserId: string) => {
     try {
+      const dbUserId = toDbId(forUserId);
       const { data, error } = await supabase.from("notifications").insert([{
-        user_id: forUserId,
+        user_id: dbUserId,
         kind: n.kind,
         name: n.name,
         color: n.color,
@@ -623,7 +618,8 @@ export const actions = {
         { data: payersData },
         { data: splitsData },
         { data: settlementsData },
-        { data: recurringData }
+        { data: recurringData },
+        { data: notificationsData }
       ] = await Promise.all([
         supabase.from("groups").select("*"),
         supabase.from("users").select("*"),
@@ -633,6 +629,7 @@ export const actions = {
         supabase.from("bill_splits").select("*"),
         supabase.from("settlements").select("*"),
         supabase.from("recurring_bills").select("*"),
+        supabase.from("notifications").select("*").order("created_at", { ascending: false }),
       ]);
 
       // If we got nothing back, don't wipe local state
@@ -750,12 +747,25 @@ export const actions = {
       const dbRecurringIds = new Set(newRecurring.map(r => r.id));
       const localOnlyRecurring = state.recurring.filter(r => !dbRecurringIds.has(r.id));
 
+      const newNotifications: Notification[] = (notificationsData || []).map((n: any) => ({
+        id: n.id,
+        kind: n.kind,
+        name: n.name,
+        color: n.color,
+        title: n.title,
+        sub: n.sub,
+        time: n.time || n.created_at,
+        unread: n.unread,
+        action: n.action_type ? { type: n.action_type, id: n.action_id, groupId: n.action_group_id } : undefined,
+      }));
+
       update(s => ({
         ...s,
         groups: [...newGroups, ...localOnlyGroups],
         bills: [...newBills, ...localOnlyBills],
         settlements: [...newSettlements, ...localOnlySettlements],
-        recurring: [...newRecurring, ...localOnlyRecurring]
+        recurring: [...newRecurring, ...localOnlyRecurring],
+        notifications: newNotifications,
       }));
 
       await flushBillFlagOverrides();
@@ -764,11 +774,49 @@ export const actions = {
         groups: newGroups.length,
         bills: newBills.length,
         settlements: newSettlements.length,
-        recurring: newRecurring.length
+        recurring: newRecurring.length,
+        notifications: newNotifications.length
       });
     } catch (e) {
       console.error("Sync error:", e);
     }
+  },
+  subscribeNotifications: (authId: string) => {
+    if (!authId) return;
+    console.log("Subscribing to notifications for:", authId);
+    
+    const channel = supabase.channel(`notifications:${authId}`)
+      .on("postgres_changes", 
+        { 
+          event: "INSERT", 
+          schema: "public", 
+          table: "notifications", 
+          filter: `user_id=eq.${authId}` 
+        }, 
+        (payload) => {
+          console.log("New notification received:", payload);
+          const n = payload.new;
+          const notif: Notification = {
+            id: n.id,
+            kind: n.kind,
+            name: n.name,
+            color: n.color,
+            title: n.title,
+            sub: n.sub,
+            time: n.time || n.created_at,
+            unread: n.unread,
+            action: n.action_type ? { type: n.action_type, id: n.action_id, groupId: n.action_group_id } : undefined,
+          };
+          update(s => ({ ...s, notifications: [notif, ...s.notifications] }));
+        }
+      )
+      .subscribe((status) => {
+        console.log("Notification subscription status:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }
 };
 

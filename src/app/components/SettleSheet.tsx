@@ -339,6 +339,7 @@ function Inner({
 
 /** Single receipt line — clean row with date + expandable ⓘ detail */
 function ReceiptRow({ item, groupName, groupId }: { item: { id: string; label: string; amt: number; total: number; payerName: string; dateStr: string; timeStr: string; splitCount: number; perHead: number; myNet: number; theirNet: number; proportion: number; isEdited?: boolean; isFlagged?: boolean }; groupName: string; groupId: string }) {
+  const myId = useStore((s) => s.me.id);
   const [expanded, setExpanded] = useState(false);
   const [showFlag, setShowFlag] = useState(false);
   const [flagReason, setFlagReason] = useState("");
@@ -353,7 +354,7 @@ function ReceiptRow({ item, groupName, groupId }: { item: { id: string; label: s
       title: `🚩 Flagged "${item.label}" in ${groupName}`,
       sub: flagReason.trim(),
       action: { type: "bill", id: item.id, groupId },
-    }, useStore.getState().me.id);
+    }, myId);
     toast(`Bill flagged: ${flagReason.trim()} 🚩`, "#FFD84D");
     setFlagReason("");
     setShowFlag(false);
