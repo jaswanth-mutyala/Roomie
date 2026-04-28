@@ -9,6 +9,15 @@
 
   Run `npm run dev` to start the development server.
 
+  ## Required environment variables
+
+  Create a local `.env.local` file with the Supabase project URL and publishable key before starting the app:
+
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY` or `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+  If these values are missing, the app now fails fast at startup with a clear configuration error.
+
   ## Supabase updates
 
   Apply SQL in this order for a production-like Supabase database:

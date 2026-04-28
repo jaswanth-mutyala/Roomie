@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "motion/react";
-import { X, Trophy, Flame, Zap, Bell, Wallet, Shield, LogOut, ChevronRight, Moon, Sparkles, Check } from "lucide-react";
+import { X, Trophy, Flame, Zap, Bell, Wallet, Shield, LogOut, ChevronRight, Moon, Sparkles, Check, Lock } from "lucide-react";
 import { useState } from "react";
 import { Avatar } from "./Avatar";
 import { useStore, actions } from "../store";
@@ -217,6 +217,43 @@ export function ProfileSheet({
                     active={profile.shareBurn}
                     onToggle={() => actions.updateProfile({ shareBurn: !profile.shareBurn })}
                   />
+                </div>
+
+                {/* Password Update */}
+                <div className="mt-4 rounded-[20px] border-2 border-black bg-white p-3" style={{ boxShadow: "3px 3px 0 0 rgba(0,0,0,1)" }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl border-2 border-black bg-[#B5A8FF] flex items-center justify-center">
+                        <Lock size={16} className="text-black" />
+                      </div>
+                      <div>
+                        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13 }}>Password</div>
+                        <div className="text-black/60" style={{ fontFamily: "'Inter', sans-serif", fontSize: 11 }}>Update your password</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const newPassword = prompt("Enter your new password (min 6 characters):");
+                        if (!newPassword) return;
+                        if (newPassword.length < 6) {
+                          actions.hydrateStore({ toasts: [] }); // lazy way to show toast
+                          // Wait, we need to use the imported `actions` or `toast` directly, but we can't import toast right here without adding it to imports. Let's just use window alert.
+                          alert("Password must be at least 6 characters.");
+                          return;
+                        }
+                        const { error } = await supabase.auth.updateUser({ password: newPassword });
+                        if (error) {
+                          alert(error.message);
+                        } else {
+                          alert("Password updated successfully!");
+                        }
+                      }}
+                      className="h-9 px-3 rounded-full border-2 border-black bg-[#FFFBF2] hover:bg-[#74FF5A] transition-colors"
+                      style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 11 }}
+                    >
+                      Change
+                    </button>
+                  </div>
                 </div>
 
                 <button

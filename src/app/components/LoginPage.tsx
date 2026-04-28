@@ -157,8 +157,33 @@ export function LoginPage({ onLogin }: { onLogin: (session: Session | null) => v
               </div>
 
               <div>
-                <div className="text-black/55 mb-1.5" style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 10, letterSpacing: "0.14em" }}>
-                  PASSWORD
+                <div className="text-black/55 mb-1.5 flex items-center justify-between" style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 10, letterSpacing: "0.14em" }}>
+                  <span>PASSWORD</span>
+                  {mode === "login" && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (email.trim().length < 5) {
+                          toast("Please enter your email first", "#FF5C39");
+                          return;
+                        }
+                        setLoading(true);
+                        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+                          redirectTo: `${window.location.origin}/?mode=recovery`,
+                        });
+                        setLoading(false);
+                        if (error) {
+                          toast(error.message, "#FF5C39");
+                        } else {
+                          toast("Password reset email sent!", "#74FF5A");
+                        }
+                      }}
+                      className="text-black/40 hover:text-black hover:underline"
+                      style={{ textTransform: "none", letterSpacing: "normal" }}
+                    >
+                      Forgot?
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 h-12 rounded-full border-2 border-black px-4 bg-[#FFFBF2]">
                   <Lock size={16} className="text-black/40" />

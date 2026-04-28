@@ -83,10 +83,48 @@ export default function App() {
       if (!isMounted) return;
       applySession(session);
       setLoading(false);
+      
+      // Check if we came from a password recovery link
+      if (window.location.search.includes("mode=recovery") || window.location.hash.includes("type=recovery")) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setTimeout(() => {
+          const newPassword = prompt("Please enter your new password to complete the reset (min 6 characters):");
+          if (newPassword && newPassword.length >= 6) {
+            supabase.auth.updateUser({ password: newPassword }).then(({ error }) => {
+              if (error) {
+                alert("Error updating password: " + error.message);
+              } else {
+                alert("Password updated successfully!");
+              }
+            });
+          } else {
+            alert("Password change canceled or invalid. You can update it later in your Profile.");
+            setSheet("profile");
+          }
+        }, 500);
+      }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       applySession(session);
+      
+      if (event === "PASSWORD_RECOVERY") {
+        setTimeout(() => {
+          const newPassword = prompt("Please enter your new password to complete the reset (min 6 characters):");
+          if (newPassword && newPassword.length >= 6) {
+            supabase.auth.updateUser({ password: newPassword }).then(({ error }) => {
+              if (error) {
+                alert("Error updating password: " + error.message);
+              } else {
+                alert("Password updated successfully!");
+              }
+            });
+          } else {
+            alert("Password change canceled or invalid. You can update it later in your Profile.");
+            setSheet("profile");
+          }
+        }, 500);
+      }
     });
 
     return () => {

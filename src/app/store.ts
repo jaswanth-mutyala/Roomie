@@ -279,6 +279,41 @@ export const actions = {
     }));
     toast("Left group", "#FFD84D");
   },
+  searchUsers: async (query: string) => {
+    if (!query.trim()) return [];
+    const res = await supabase
+      .from("users")
+      .select("id, name, color, upi")
+      .or(`name.ilike.%${query}%,id.ilike.%${query}%`)
+      .limit(5);
+    
+    if (res.error) {
+      console.error(res.error);
+      return [];
+    }
+    return res.data as Member[];
+  },
+  addExistingMember: async (groupId: string, member: Member) => {
+    const res = await supabase.from("group_members").insert({ group_id: groupId, user_id: member.id });
+    if (res.error) {
+      // If it's a unique violation, they might already be in the group
+      if (res.error.code !== "23505") {
+        toast("DB Error: " + res.error.message, "#FF5C39");
+      } else {
+        toast(`${member.name} is already in the group!`, "#FFD84D");
+      }
+      return;
+    }
+
+    update((s) => ({
+      ...s,
+      groups: s.groups.map(g => g.id === groupId ? {
+        ...g,
+        members: [...g.members, member]
+      } : g)
+    }));
+    toast(`Added ${member.name} 🎉`, "#74FF5A");
+  },
   addMember: async (groupId: string, name: string) => {
     const colors = ["#FF5C39", "#74FF5A", "#FFD84D", "#B5A8FF", "#FF9FB8", "#6EE7C7"];
     const id = name.toLowerCase().replace(/\s+/g, "") + Date.now().toString().slice(-4);

@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, X, Receipt, ArrowRight, Sparkles, Plus, Share2, Check, Flag } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Avatar } from "./Avatar";
-import { useStore, groupBills, groupBurn, simplifyDebts, netFor, actions, getBillEdges, toast, type Group } from "../store";
+import { useStore, groupBills, groupBurn, simplifyDebts, netFor, actions, getBillEdges, toast, type Group, type Member } from "../store";
 import { GroupIcon } from "./GroupIcon";
 
 export function GroupDetailSheet({
@@ -62,20 +62,54 @@ function Inner({
   const [showInvite, setShowInvite] = useState(false);
   const [addMemberName, setAddMemberName] = useState("");
   const [showAddInput, setShowAddInput] = useState(false);
+  const [searchResults, setSearchResults] = useState<Member[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
   const [confirmAction, setConfirmAction] = useState<"exit" | "delete" | null>(null);
   const [splitToDelete, setSplitToDelete] = useState<string | null>(null);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendSearch, setFriendSearch] = useState("");
+  const [friendSearchResults, setFriendSearchResults] = useState<Member[]>([]);
+  const [isFriendSearching, setIsFriendSearching] = useState(false);
 
-  const submitAddMember = () => {
-    const name = addMemberName.trim();
-    if (name) {
-      actions.addMember(g.id, name);
-      setAddMemberName("");
-      setShowAddInput(false);
+  useEffect(() => {
+    if (!addMemberName.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
     }
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      const results = await actions.searchUsers(addMemberName.trim());
+      // filter out folks already in group
+      setSearchResults(results.filter(r => !g.members.some(m => m.id === r.id)));
+      setIsSearching(false);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [addMemberName, g.members]);
+
+  useEffect(() => {
+    if (!friendSearch.trim()) {
+      setFriendSearchResults([]);
+      setIsFriendSearching(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsFriendSearching(true);
+      const results = await actions.searchUsers(friendSearch.trim());
+      // filter out folks already in group
+      setFriendSearchResults(results.filter(r => !g.members.some(m => m.id === r.id)));
+      setIsFriendSearching(false);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [friendSearch, g.members]);
+
+  const submitAddMember = (user: Member) => {
+    actions.addExistingMember(g.id, user);
+    setAddMemberName("");
+    setSearchResults([]);
+    setShowAddInput(false);
   };
 
   // Subscribe to settlements so we re-render when debts change
@@ -191,19 +225,44 @@ function Inner({
                     ref={addInputRef}
                     value={addMemberName}
                     onChange={(e) => setAddMemberName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && submitAddMember()}
-                    placeholder="Friend's name..."
+                    placeholder="Search friend's @username or name..."
                     className="flex-1 bg-transparent outline-none text-white placeholder:text-white/50"
                     style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 14 }}
                   />
-                  <button
-                    onClick={submitAddMember}
-                    disabled={!addMemberName.trim()}
-                    className="h-8 w-8 rounded-full bg-white flex items-center justify-center shrink-0 disabled:opacity-40"
-                  >
-                    <Check size={14} className="text-black" />
-                  </button>
+                  {isSearching && <span className="text-white/50 text-xs">...</span>}
                 </div>
+                {addMemberName.trim().length > 0 && (
+                  <div className="mt-2 bg-white/20 rounded-2xl border-2 border-white/40 p-2 overflow-hidden flex flex-col gap-1 backdrop-blur-sm">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((user) => (
+                        <button
+                          key={user.id}
+                          onClick={() => submitAddMember(user)}
+                          className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/10 text-left w-full"
+                        >
+                          <Avatar name={user.name} color={user.color} size={28} />
+                          <div>
+                            <div className="text-white font-bold text-sm tracking-tight">{user.name}</div>
+                            <div className="text-white/60 text-xs">@{user.id}</div>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      !isSearching && (
+                        <div className="p-3 text-center text-white text-sm">
+                          <p className="mb-2 opacity-80 mt-1">No user found.</p>
+                          <button
+                            onClick={shareInvite}
+                            className="bg-white text-black px-4 py-2 rounded-full font-bold shadow-[2px_2px_0_0_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all"
+                            style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                          >
+                            Invite {addMemberName} to Roomie
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -695,27 +754,57 @@ function Inner({
                 autoFocus
                 value={friendSearch}
                 onChange={(e) => setFriendSearch(e.target.value)}
-                placeholder="Search by name or @handle..."
-                className="w-full h-[52px] bg-black/5 rounded-2xl px-4 outline-none border-2 border-transparent focus:border-black transition-colors"
+                placeholder="Search friend's @username or name..."
+                className="w-full h-[52px] bg-black/5 rounded-2xl px-4 outline-none border-2 border-transparent focus:border-black transition-colors shrink-0"
                 style={{ fontFamily: "'Inter', sans-serif", fontSize: 14 }}
               />
 
-              <div className="mt-6">
-                <button
-                  disabled={!friendSearch.trim()}
-                  onClick={() => {
-                    if (friendSearch.trim()) {
-                      actions.addMember(g.id, friendSearch.trim());
-                      setShowAddFriend(false);
-                      setFriendSearch("");
-                      setShowInvite(false);
-                    }
-                  }}
-                  className="w-full h-[52px] rounded-full border-2 border-black flex items-center justify-center font-bold text-black disabled:opacity-50 transition-opacity"
-                  style={{ backgroundColor: "#74FF5A", fontFamily: "'Space Grotesk', sans-serif", fontSize: 15 }}
-                >
-                  Send Request
-                </button>
+              <div className="mt-4 flex-1 overflow-y-auto min-h-[100px] max-h-[300px]">
+                {friendSearch.trim().length > 0 ? (
+                  isFriendSearching ? (
+                    <div className="text-center text-black/50 py-4 text-sm font-medium">Searching...</div>
+                  ) : friendSearchResults.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {friendSearchResults.map((user) => (
+                        <button
+                          key={user.id}
+                          onClick={() => {
+                            actions.addExistingMember(g.id, user);
+                            setShowAddFriend(false);
+                            setFriendSearch("");
+                            setShowInvite(false);
+                          }}
+                          className="w-full flex items-center gap-3 p-3 rounded-2xl border-2 border-transparent hover:border-black/10 bg-black/5 hover:bg-black/5 transition-all text-left"
+                        >
+                          <Avatar name={user.name} color={user.color} size={36} />
+                          <div>
+                            <div className="font-bold text-black text-[15px] leading-tight flex items-center gap-1.5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                              {user.name}
+                            </div>
+                            <div className="text-black/50 text-[12px] font-medium tracking-tight mt-0.5" style={{ fontFamily: "'Inter', sans-serif" }}>
+                              @{user.id}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6">
+                      <p className="text-black/50 text-sm mb-4" style={{ fontFamily: "'Inter', sans-serif" }}>No user found with that name.</p>
+                      <button
+                        onClick={shareInvite}
+                        className="bg-black text-white px-5 py-2.5 rounded-full font-bold shadow-[3px_3px_0_0_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all text-sm"
+                        style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                      >
+                        Invite {friendSearch} to Roomie
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <div className="text-center text-black/40 py-8 text-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
+                    Type a name or username to search
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
