@@ -382,12 +382,19 @@ export const actions = {
 
     update((s) => ({ ...s, bills: [bill, ...s.bills] }));
     toast(`Split ₹${b.amount} — done 💸`, "#74FF5A");
-    actions.pushNotification({
-      kind: "info",
-      name: "You",
-      color: "#FFD84D",
-      title: "added " + b.title,
-      sub: "₹" + b.amount.toLocaleString() + " · " + (group?.name || "Group"),
+    const groupMembers = group?.members || [];
+    const myId = get().me.id;
+    groupMembers.forEach(m => {
+      if (m.id !== myId) {
+        actions.pushNotification({
+          kind: "info",
+          name: get().me.name,
+          color: get().me.color,
+          title: "added " + b.title,
+          sub: "₹" + b.amount.toLocaleString() + " · " + (group?.name || "Group"),
+          action: { type: "bill", id: bill.id, groupId: b.groupId },
+        }, m.id);
+      }
     });
   },
   updateBill: async (id: string, b: Omit<Bill, "id" | "date">) => {
@@ -408,13 +415,19 @@ export const actions = {
       bills: s.bills.map((bill) => bill.id === id ? { ...bill, ...b, isEdited: true, updatedAt: new Date().toISOString() } : bill),
     }));
     toast(`Updated ${b.title} 📝`, "#74FF5A");
-    actions.pushNotification({
-      kind: "info",
-      name: "You",
-      color: "#FFD84D",
-      title: "updated " + b.title,
-      sub: "₹" + b.amount.toLocaleString() + " · " + (group?.name || "Group"),
-      action: { type: "bill", id, groupId: b.groupId },
+    const groupMembers = group?.members || [];
+    const myId = get().me.id;
+    groupMembers.forEach(m => {
+      if (m.id !== myId) {
+        actions.pushNotification({
+          kind: "info",
+          name: get().me.name,
+          color: get().me.color,
+          title: "updated " + b.title,
+          sub: "₹" + b.amount.toLocaleString() + " · " + (group?.name || "Group"),
+          action: { type: "bill", id, groupId: b.groupId },
+        }, m.id);
+      }
     });
   },
   deleteBill: async (id: string) => {
@@ -502,13 +515,15 @@ export const actions = {
     }));
     const toMember = state.groups.flatMap((g) => g.members).find((m) => m.id === to);
     toast(`Paid ₹${normalizedAmount.toFixed(2)} to ${toMember?.name || "them"}`, "#74FF5A");
-    actions.pushNotification({
-      kind: "success",
-      name: "You",
-      color: "#FFD84D",
-      title: (to === "me" ? "Received " : "Paid ") + "₹" + normalizedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      sub: "Settlement in " + (state.groups.find(g => g.id === groupId)?.name || "group"),
-    });
+    if (to !== myId) {
+      actions.pushNotification({
+        kind: "success",
+        name: get().me.name,
+        color: get().me.color,
+        title: "Paid you ₹" + normalizedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        sub: "Settlement in " + (state.groups.find(g => g.id === groupId)?.name || "group"),
+      }, to);
+    }
   },
   toggleRecurring: async (id: string) => {
     const r = state.recurring.find(x => x.id === id);
@@ -572,17 +587,31 @@ export const actions = {
   dismissToast: (id: string) => {
     update((s) => ({ ...s, toasts: s.toasts.filter((t) => t.id !== id) }));
   },
-  markNotifsRead: () => {
+  markNotifsRead: async () => {
     update((s) => ({ ...s, notifications: s.notifications.map((n) => ({ ...n, unread: false })) }));
+    const myId = get().me.id;
+    await supabase.from("notifications").update({ unread: false }).eq("user_id", myId);
   },
-  pushNotification: (n: Omit<Notification, "id" | "time" | "unread">) => {
-    const notif: Notification = {
-      ...n,
-      id: "n" + Date.now(),
-      time: "Just now",
-      unread: true,
-    };
-    update((s) => ({ ...s, notifications: [notif, ...s.notifications] }));
+  pushNotification: async (n: Omit<Notification, "id" | "time" | "unread">, forUserId: string) => {
+    try {
+      const { data, error } = await supabase.from("notifications").insert([{
+        user_id: forUserId,
+        kind: n.kind,
+        name: n.name,
+        color: n.color,
+        title: n.title,
+        sub: n.sub,
+        time: new Date().toISOString(),
+        unread: true,
+        action_type: n.action?.type,
+        action_id: n.action?.id,
+        action_group_id: n.action?.groupId
+      }]).select().single();
+
+      if (error) console.error("Error pushing notification:", error);
+    } catch (err) {
+      console.error(err);
+    }
   },
   sync: async () => {
     try {

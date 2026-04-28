@@ -353,7 +353,7 @@ function ReceiptRow({ item, groupName, groupId }: { item: { id: string; label: s
       title: `🚩 Flagged "${item.label}" in ${groupName}`,
       sub: flagReason.trim(),
       action: { type: "bill", id: item.id, groupId },
-    });
+    }, useStore.getState().me.id);
     toast(`Bill flagged: ${flagReason.trim()} 🚩`, "#FFD84D");
     setFlagReason("");
     setShowFlag(false);

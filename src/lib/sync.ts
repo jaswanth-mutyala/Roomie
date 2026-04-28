@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { actions, Group, Bill, Settlement, RecurringBill, Member } from "../app/store";
+import { actions, Group, Bill, Settlement, RecurringBill, Member, useStore } from "../app/store";
 
 export async function initialFetch() {
   console.log("Fetching data from Supabase...");
@@ -18,6 +18,9 @@ export async function initialFetch() {
   // 4. Fetch Settlements & Recurring
   const { data: settlementsData } = await supabase.from("settlements").select("*");
   const { data: recurringData } = await supabase.from("recurring_bills").select("*");
+
+  // 5. Fetch Notifications
+  const { data: notificationsData } = await supabase.from("notifications").select("*").order("created_at", { ascending: false });
 
   if (!groupsData) return;
 
@@ -79,11 +82,46 @@ export async function initialFetch() {
   // Find the 'me' user
   const meUser = users?.find(u => u.is_me);
 
+  // Reconstruct Notifications
+  const reconstructedNotifications = (notificationsData || []).map((n: any) => ({
+    id: n.id,
+    kind: n.kind,
+    name: n.name,
+    color: n.color,
+    title: n.title,
+    sub: n.sub,
+    time: n.time || n.created_at,
+    unread: n.unread,
+    action: n.action_type ? { type: n.action_type, id: n.action_id, groupId: n.action_group_id } : undefined,
+  }));
+
+  // 6. Listen for Notifications
+  const meUser = users?.find(u => u.is_me);
+  if (meUser) {
+    supabase.channel("my_notifications").on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${meUser.id}` }, (payload) => {
+      const n = payload.new;
+      const notif = {
+        id: n.id,
+        kind: n.kind,
+        name: n.name,
+        color: n.color,
+        title: n.title,
+        sub: n.sub,
+        time: n.time || n.created_at,
+        unread: n.unread,
+        action: n.action_type ? { type: n.action_type, id: n.action_id, groupId: n.action_group_id } : undefined,
+      };
+      // Use state upater
+      useStore.setState(s => ({ ...s, notifications: [notif, ...s.notifications]}));
+    }).subscribe();
+  }
+
   const hydrateData: Partial<any> = {
     groups: reconstructedGroups,
     bills: reconstructedBills,
     settlements: reconstructedSettlements,
     recurring: reconstructedRecurring,
+    notifications: reconstructedNotifications,
   };
 
   if (meUser) {
