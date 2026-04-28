@@ -19,7 +19,7 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 -- Users can read their own notifications
 CREATE POLICY "Users can view their notifications" 
 ON notifications FOR SELECT 
-USING (user_id = auth.uid());
+USING (user_id = auth.uid()::text);
 
 -- Triggers for database-level notifications would go here or we manage inserts in FE
 CREATE POLICY "Users can insert notifications" 
@@ -28,6 +28,6 @@ WITH CHECK (true); -- Relaxed for testing/sending to others
 
 CREATE POLICY "Users can update their notifications" 
 ON notifications FOR UPDATE 
-USING (user_id = auth.uid());
+USING (user_id = auth.uid()::text);
 
 alter publication supabase_realtime add table notifications;
