@@ -286,20 +286,24 @@ export const actions = {
       return groupId;
     }
 
-    const { data: gData, error: gError } = await supabase.from("groups").select("*").eq("id", groupId).single();
-    if (gError || !gData) {
-      toast("Invalid code or group not found.", "#FF5C39");
-      return null;
-    }
-
+    // Attempt to join first because RLS restricts viewing groups they aren't part of
     const res = await supabase.from("group_members").insert({ group_id: groupId, user_id: toDbId("me") });
+    
+    // 23505 = already exists, 23503 = foreign key violation (group does not exist)
     if (res.error && res.error.code !== "23505") {
-      toast("DB Error: " + res.error.message, "#FF5C39");
+      if (res.error.code === "23503") {
+        toast("Invalid code or group not found.", "#FF5C39");
+      } else {
+        toast("DB Error: " + res.error.message, "#FF5C39");
+      }
       return null;
     }
 
+    // Now that we're a member, we can fetch the group info (RLS will permit this)
+    const { data: gData, error: gError } = await supabase.from("groups").select("name").eq("id", groupId).single();
+    
     await actions.fetchData();
-    toast(`Joined ${gData.name} 🎉`, "#74FF5A");
+    toast(`Joined ${gData?.name || "group"} 🎉`, "#74FF5A");
     return groupId;
   },  exitGroup: async (id: string) => {
     const res = await supabase.from("group_members").delete().eq("group_id", id).eq("user_id", toDbId("me"));
