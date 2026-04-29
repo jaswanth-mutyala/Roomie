@@ -95,6 +95,23 @@ export function NotificationsSheet({ open, onClose, onNavigate }: { open: boolea
                       <div className="text-black/80 mt-0.5 truncate" style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: n.unread ? 500 : 400 }}>
                         {n.sub}
                       </div>
+                      
+                      {n.action?.type === "settlement" && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); actions.confirmSettlement(n.action!.id, 'confirmed'); }}
+                            className="bg-[#74FF5A] border-2 border-black rounded-xl px-3 py-1 font-space font-bold text-[11px] hover:-translate-y-0.5 hover:shadow-[1px_1px_0_0_#000] active:translate-y-0 active:shadow-none transition-all"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); actions.confirmSettlement(n.action!.id, 'rejected'); }}
+                            className="bg-[#FF5C39] text-white border-2 border-black rounded-xl px-3 py-1 font-space font-bold text-[11px] hover:-translate-y-0.5 hover:shadow-[1px_1px_0_0_#000] active:translate-y-0 active:shadow-none transition-all"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-col items-end justify-between h-full py-1">
                       {n.kind === "success" && (

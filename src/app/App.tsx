@@ -160,6 +160,11 @@ export default function App() {
 
   useEffect(() => {
     if (session?.user?.id) {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (window.Notification.permission === 'default') {
+          window.Notification.requestPermission();
+        }
+      }
       const unsubscribe = actions.subscribeNotifications(session.user.id);
       return () => {
         if (unsubscribe) unsubscribe();

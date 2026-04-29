@@ -45,6 +45,7 @@ export type Settlement = {
   to: string;
   amount: number;
   date: string;
+  status: 'pending' | 'confirmed' | 'rejected';
 };
 
 export type Group = {
@@ -66,7 +67,7 @@ export type Notification = {
   sub: string;
   time: string;
   unread: boolean;
-  action?: { type: "bill" | "group"; id: string; groupId?: string };
+  action?: { type: "bill" | "group" | "settlement"; id: string; groupId?: string };
 };
 
 type State = {
@@ -488,7 +489,7 @@ export const actions = {
     const date = new Date().toISOString();
 
     // Push to Supabase first
-    const res = await supabase.from("settlements").insert({ id, group_id: groupId, from_user: toDbId(from), to_user: toDbId(to), amount: normalizedAmount, date });
+    const res = await supabase.from("settlements").insert({ id, group_id: groupId, from_user: toDbId(from), to_user: toDbId(to), amount: normalizedAmount, date, status: 'pending' });
     if (res.error) {
       console.error("Error inserting settlement:", res.error);
       toast("DB Error: " + res.error.message, "#FF5C39");
@@ -506,18 +507,43 @@ export const actions = {
           to,
           amount: normalizedAmount,
           date,
+          status: 'pending'
         },
       ],
     }));
     const toMember = state.groups.flatMap((g) => g.members).find((m) => m.id === to);
-    toast(`Paid ₹${normalizedAmount.toFixed(2)} to ${toMember?.name || "them"}`, "#74FF5A");
+    toast(`Pending: Marked ₹${normalizedAmount.toFixed(2)} as paid to ${toMember?.name || "them"}`, "#FFF85A");
     actions.pushNotification({
-      kind: "success",
+      kind: "info",
       name: state.me.name,
       color: state.me.color,
-      title: "Paid you ₹" + normalizedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      sub: "Settlement in " + (state.groups.find(g => g.id === groupId)?.name || "group"),
+      title: "Marked ₹" + normalizedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " as paid",
+      sub: "Please confirm you received it in " + (state.groups.find(g => g.id === groupId)?.name || "group"),
+      action: { type: "settlement", id, groupId }
     }, to);
+  },
+  confirmSettlement: async (id: string, status: 'confirmed' | 'rejected') => {
+    const res = await supabase.from("settlements").update({ status }).eq("id", id);
+    if (res.error) {
+      console.error("Error updating settlement status:", res.error);
+      toast("DB Error: " + res.error.message, "#FF5C39");
+      return;
+    }
+    update((s) => ({
+      ...s,
+      settlements: s.settlements.map((sett) => (sett.id === id ? { ...sett, status } : sett)),
+    }));
+    toast(status === 'confirmed' ? "Payment confirmed" : "Payment rejected", status === 'confirmed' ? "#74FF5A" : "#FF5C39");
+    const set = state.settlements.find(s => s.id === id);
+    if (set) {
+        actions.pushNotification({
+          kind: status === 'confirmed' ? "success" : "warn",
+          name: state.me.name,
+          color: state.me.color,
+          title: status === 'confirmed' ? "Payment recipient confirmed" : "Payment rejected",
+          sub: `For ₹${set.amount}`,
+        }, set.from);
+    }
   },
   toggleRecurring: async (id: string) => {
     const r = state.recurring.find(x => x.id === id);
@@ -719,7 +745,8 @@ export const actions = {
         from: mapId(s.from_user),
         to: mapId(s.to_user),
         amount: Number(s.amount),
-        date: s.date
+        date: s.date,
+        status: s.status || "pending"
       }));
 
       const newRecurring: RecurringBill[] = (recurringData || []).map(r => ({
@@ -808,6 +835,13 @@ export const actions = {
             action: n.action_type ? { type: n.action_type, id: n.action_id, groupId: n.action_group_id } : undefined,
           };
           update(s => ({ ...s, notifications: [notif, ...s.notifications] }));
+          
+          if (typeof window !== "undefined" && "Notification" in window && window.Notification.permission === "granted") {
+            new window.Notification(notif.title, { body: notif.sub });
+          }
+
+          // Trigger a full sync when we get a notification to pull new bills/splits
+          actions.sync();
         }
       )
       .subscribe((status) => {
@@ -899,7 +933,7 @@ export function netFor(groupId: string, memberId: string): number {
   // Settlements: "from" paid money to "to"
   // If I am "from": I paid, so my debt decreases → net goes UP
   // If I am "to": I received, so what's owed to me decreases → net goes DOWN
-  for (const s of state.settlements.filter((x) => x.groupId === groupId)) {
+  for (const s of state.settlements.filter((x) => x.groupId === groupId && x.status !== 'rejected')) {
     const amt = truncateMoney(s.amount);
     if (s.from === memberId) net = truncateMoney(net + amt);
     if (s.to === memberId) net = truncateMoney(net - amt);

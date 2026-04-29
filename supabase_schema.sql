@@ -65,6 +65,7 @@ CREATE TABLE settlements (
   to_user text REFERENCES users(id) ON DELETE CASCADE,
   amount numeric NOT NULL,
   date text NOT NULL,
+  status text DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected')),
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -102,3 +103,23 @@ alter publication supabase_realtime add table bill_payers;
 alter publication supabase_realtime add table bill_splits;
 alter publication supabase_realtime add table settlements;
 alter publication supabase_realtime add table recurring_bills;
+
+-- 10. Enable Realtime on tables safely
+-- DO $$
+-- DECLARE
+--     tbl text;
+--     tables_to_add text[] := ARRAY['users', 'groups', 'group_members', 'bills', 'bill_payers', 'bill_splits', 'settlements', 'recurring_bills'];
+-- BEGIN
+--     FOREACH tbl IN ARRAY tables_to_add
+--     LOOP
+--         -- Check if the table is NOT already in the publication
+--         IF NOT EXISTS (
+--             SELECT 1 
+--             FROM pg_publication_tables 
+--             WHERE pubname = 'supabase_realtime' 
+--             AND tablename = tbl
+--         ) THEN
+--             EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE %I', tbl);
+--         END IF;
+--     END LOOP;
+-- END $$;
