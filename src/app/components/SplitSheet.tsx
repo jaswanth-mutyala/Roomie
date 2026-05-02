@@ -5,6 +5,7 @@ import { Avatar } from "./Avatar";
 import { SwipeToSplit } from "./SwipeToSplit";
 import { useStore, actions } from "../store";
 import { GroupIcon } from "./GroupIcon";
+import { splitEqual } from "../../lib/equal_split";
 
 const DEFAULT_CATEGORIES = ["Mess", "Wifi", "Rent", "Maid", "Groceries", "Food", "Travel", "Stay"];
 
@@ -124,12 +125,15 @@ export function SplitSheet({
 
   const netPerMember = useMemo(() => {
     if (!group) return [];
+    const validSelected = selected.filter(id => group.members.some(m => m.id === id));
+    const shares = validSelected.length > 0 ? splitEqual(total, validSelected.length) : [];
     return group.members.map((m) => {
       const paid = Number(payers[m.id]) || 0;
-      const share = selected.includes(m.id) ? perHead : 0;
+      const idx = validSelected.indexOf(m.id);
+      const share = idx >= 0 ? shares[idx] : 0;
       return { ...m, paid, share, net: paid - share };
     });
-  }, [group, payers, perHead, selected]);
+  }, [group, payers, total, selected]);
 
   const press = (k: string) => {
     setAmount((a) => {

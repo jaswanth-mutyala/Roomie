@@ -210,7 +210,16 @@ export default function App() {
     setSheet("split");
   };
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: "#F2EADA" }}>
+        <div style={{ color: "#888", fontFamily: "'Inter', sans-serif", fontSize: "1.1rem", fontWeight: 500, display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-black opacity-50"></div>
+          Loading Roomie...
+        </div>
+      </div>
+    );
+  }
 
   const isAuthed = !!session?.user;
 

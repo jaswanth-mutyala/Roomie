@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { supabase } from "../lib/supabase";
+import { splitEqual } from "../lib/equal_split";
 
 export type Member = {
   id: string;
@@ -79,6 +80,9 @@ type State = {
   settlements: Settlement[];
   notifications: Notification[];
   toasts: { id: string; text: string; tint: string }[];
+  isLoading?: boolean;
+  error?: string | null;
+  unreadCount?: number;
 };
 
 const me: Member = { id: "", name: "You", color: "#FFD84D", upi: "aarav@okhdfc", isMe: true };
@@ -92,6 +96,9 @@ let state: State = {
   settlements: [],
   notifications: [],
   toasts: [],
+  isLoading: false,
+  error: null,
+  unreadCount: 0,
 };
 
 const listeners = new Set<() => void>();
@@ -208,6 +215,85 @@ async function flushBillFlagOverrides() {
   }
 }
 
+// --- Offline Queue Logic ---
+export type PendingAction = {
+  id: string;
+  type: "ADD_BILL" | "UPDATE_BILL" | "DELETE_BILL" | "ADD_SETTLEMENT" | "RESOLVE_SETTLEMENT";
+  payload: any;
+  createdAt: number;
+};
+
+const QUEUE_KEY = "roomie-pending-queue";
+
+function getQueue(): PendingAction[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(window.localStorage.getItem(QUEUE_KEY) || "[]"); } catch { return []; }
+}
+
+function saveQueue(q: PendingAction[]) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch {}
+}
+
+export function pushOfflineAction(action: Omit<PendingAction, "id" | "createdAt">) {
+  const q = getQueue();
+  q.push({ ...action, id: "q" + Date.now() + Math.floor(Math.random()*1000), createdAt: Date.now() });
+  saveQueue(q);
+}
+
+let isProcessingQueue = false;
+
+export async function processOfflineQueue() {
+  if (isProcessingQueue || typeof navigator === "undefined" || !navigator.onLine) return;
+  isProcessingQueue = true;
+  
+  try {
+    const q = getQueue();
+    if (q.length === 0) return;
+
+    const remaining = [...q];
+    let changed = false;
+
+    for (const action of q) {
+      let success = false;
+      try {
+        if (action.type === "ADD_BILL" || action.type === "UPDATE_BILL") {
+          const res = await saveBillInDb(action.payload, action.type === "UPDATE_BILL");
+          if (!res.error || !res.error.message.includes("Failed to fetch")) success = true;
+        } else if (action.type === "DELETE_BILL") {
+          const res = await supabase.from("bills").delete().eq("id", action.payload);
+          if (!res.error || !res.error.message.includes("Failed to fetch")) success = true;
+        } else if (action.type === "ADD_SETTLEMENT") {
+          const res = await supabase.from("settlements").insert(action.payload);
+          if (!res.error || !res.error.message.includes("Failed to fetch")) success = true;
+        } else if (action.type === "RESOLVE_SETTLEMENT") {
+          const res = await supabase.from("settlements").update({ status: action.payload.status }).eq("id", action.payload.id);
+          if (!res.error || !res.error.message.includes("Failed to fetch")) success = true;
+        }
+      } catch (err) {
+        console.error("Queue error:", err);
+      }
+
+      if (success) {
+        const idx = remaining.findIndex(a => a.id === action.id);
+        if (idx >= 0) remaining.splice(idx, 1);
+        changed = true;
+      } else {
+        break;
+      }
+    }
+
+    if (changed) saveQueue(remaining);
+  } finally {
+    isProcessingQueue = false;
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", processOfflineQueue);
+}
+// ----------------------------
+
 export const actions = {
   setMe: (id: string, email?: string) => {
     update(s => ({
@@ -215,8 +301,8 @@ export const actions = {
       me: { ...s.me, id: "me", authId: id, name: email ? email.split("@")[0] : s.me.name },
     }));
   },
-  hydrateStore: (data: Partial<State>) => {
-    update((s) => ({ ...s, ...data }));
+  hydrateStore: (data: Partial<State> | ((s: State) => Partial<State>)) => {
+    update((s) => ({ ...s, ...(typeof data === "function" ? data(s) : data) }));
   },
   addGroup: async (data: Omit<Group, "id" | "createdAt" | "members"> & { members?: Member[] }) => {
     const id = "g" + Date.now();
@@ -378,11 +464,21 @@ export const actions = {
     const bill: Bill = { ...b, id: "b" + Date.now(), date: new Date().toISOString() };
     const group = state.groups.find(g => g.id === b.groupId);
     
-    const res = await saveBillInDb(bill, false);
-    if (res.error) { toast("DB Error: " + res.error.message, "#FF5C39"); return; }
-
     update((s) => ({ ...s, bills: [bill, ...s.bills] }));
-    toast(`Split ₹${b.amount} — done 💸`, "#74FF5A");
+
+    try {
+      const res = await saveBillInDb(bill, false);
+      if (res.error) throw res.error;
+      toast(`Split ₹${b.amount} — done 💸`, "#74FF5A");
+    } catch (e: any) {
+      if (e.message?.includes("Failed to fetch") || !navigator.onLine) {
+        pushOfflineAction({ type: "ADD_BILL", payload: bill });
+        toast(`Split ₹${b.amount} (Saved offline)`, "#FFD84D");
+      } else {
+        toast("DB Error: " + e.message, "#FF5C39");
+        update((s) => ({ ...s, bills: s.bills.filter(x => x.id !== bill.id) }));
+      }
+    }
     const groupMembers = group?.members || [];
     const myId = state.me.id;
     groupMembers.forEach(m => {
@@ -399,21 +495,35 @@ export const actions = {
   updateBill: async (id: string, b: Omit<Bill, "id" | "date">) => {
     const group = state.groups.find(g => g.id === b.groupId);
     const existing = state.bills.find((bill) => bill.id === id);
+    if (!existing) return;
     const bill: Bill = {
       ...b,
       id,
-      date: existing?.date || new Date().toISOString(),
-      flag: existing?.flag,
+      date: existing.date,
+      flag: existing.flag,
     };
-
-    const res = await saveBillInDb(bill, true);
-    if (res.error) { toast("DB Error: " + res.error.message, "#FF5C39"); return; }
 
     update((s) => ({
       ...s,
       bills: s.bills.map((bill) => bill.id === id ? { ...bill, ...b, isEdited: true, updatedAt: new Date().toISOString() } : bill),
     }));
-    toast(`Updated ${b.title} 📝`, "#74FF5A");
+
+    try {
+      const res = await saveBillInDb(bill, true);
+      if (res.error) throw res.error;
+      toast(`Updated ${b.title} 📝`, "#74FF5A");
+    } catch (e: any) {
+      if (e.message?.includes("Failed to fetch") || !navigator.onLine) {
+        pushOfflineAction({ type: "UPDATE_BILL", payload: bill });
+        toast(`Updated ${b.title} (Saved offline)`, "#FFD84D");
+      } else {
+        toast("DB Error: " + e.message, "#FF5C39");
+        update((s) => ({
+          ...s,
+          bills: s.bills.map((bill) => bill.id === id ? existing : bill),
+        }));
+      }
+    }
     const groupMembers = group?.members || [];
     const myId = state.me.id;
     groupMembers.forEach(m => {
@@ -428,14 +538,25 @@ export const actions = {
     });
   },
   deleteBill: async (id: string) => {
-    const res = await supabase.from("bills").delete().eq("id", id);
-    if (res.error) { toast("DB Error: " + res.error.message, "#FF5C39"); return; }
-
+    const existing = state.bills.find(b => b.id === id);
     update((s) => ({
       ...s,
       bills: s.bills.filter((b) => b.id !== id),
     }));
-    toast("Split deleted 🗑️", "#FF5C39");
+
+    try {
+      const res = await supabase.from("bills").delete().eq("id", id);
+      if (res.error) throw res.error;
+      toast("Split deleted 🗑️", "#FF5C39");
+    } catch (e: any) {
+      if (e.message?.includes("Failed to fetch") || !navigator.onLine) {
+        pushOfflineAction({ type: "DELETE_BILL", payload: id });
+        toast("Split deleted (Saved offline)", "#FFD84D");
+      } else {
+        toast("DB Error: " + e.message, "#FF5C39");
+        if (existing) update((s) => ({ ...s, bills: [...s.bills, existing] }));
+      }
+    }
   },
   flagBill: async (billId: string, reason: string) => {
     console.log("Flagging bill:", billId, reason);
@@ -487,32 +608,32 @@ export const actions = {
 
     const id = "s" + Date.now();
     const date = new Date().toISOString();
-
-    // Push to Supabase first
-    const res = await supabase.from("settlements").insert({ id, group_id: groupId, from_user: toDbId(from), to_user: toDbId(to), amount: normalizedAmount, date, status: 'pending' });
-    if (res.error) {
-      console.error("Error inserting settlement:", res.error);
-      toast("DB Error: " + res.error.message, "#FF5C39");
-      return;
-    }
+    const payload = { id, group_id: groupId, from_user: toDbId(from), to_user: toDbId(to), amount: normalizedAmount, date, status: 'pending' };
 
     update((s) => ({
       ...s,
       settlements: [
         ...s.settlements,
-        {
-          id,
-          groupId,
-          from,
-          to,
-          amount: normalizedAmount,
-          date,
-          status: 'pending'
-        },
+        { id, groupId, from, to, amount: normalizedAmount, date, status: 'pending' as const },
       ],
     }));
+
     const toMember = state.groups.flatMap((g) => g.members).find((m) => m.id === to);
-    toast(`Pending: Marked ₹${normalizedAmount.toFixed(2)} as paid to ${toMember?.name || "them"}`, "#FFF85A");
+
+    try {
+      const res = await supabase.from("settlements").insert(payload);
+      if (res.error) throw res.error;
+      toast(`Pending: Marked ₹${normalizedAmount.toFixed(2)} as paid to ${toMember?.name || "them"}`, "#FFF85A");
+    } catch (e: any) {
+      if (e.message?.includes("Failed to fetch") || !navigator.onLine) {
+        pushOfflineAction({ type: "ADD_SETTLEMENT", payload });
+        toast(`Marked as paid (Saved offline)`, "#FFD84D");
+      } else {
+        toast("DB Error: " + e.message, "#FF5C39");
+        update((s) => ({ ...s, settlements: s.settlements.filter(x => x.id !== id) }));
+        return;
+      }
+    }
     actions.pushNotification({
       kind: "info",
       name: state.me.name,
@@ -523,17 +644,31 @@ export const actions = {
     }, to);
   },
   confirmSettlement: async (id: string, status: 'confirmed' | 'rejected') => {
-    const res = await supabase.from("settlements").update({ status }).eq("id", id);
-    if (res.error) {
-      console.error("Error updating settlement status:", res.error);
-      toast("DB Error: " + res.error.message, "#FF5C39");
-      return;
-    }
+    const existing = state.settlements.find(s => s.id === id);
     update((s) => ({
       ...s,
       settlements: s.settlements.map((sett) => (sett.id === id ? { ...sett, status } : sett)),
     }));
-    toast(status === 'confirmed' ? "Payment confirmed" : "Payment rejected", status === 'confirmed' ? "#74FF5A" : "#FF5C39");
+
+    try {
+      const res = await supabase.from("settlements").update({ status }).eq("id", id);
+      if (res.error) throw res.error;
+      toast(status === 'confirmed' ? "Payment confirmed" : "Payment rejected", status === 'confirmed' ? "#74FF5A" : "#FF5C39");
+    } catch (e: any) {
+      if (e.message?.includes("Failed to fetch") || !navigator.onLine) {
+        pushOfflineAction({ type: "RESOLVE_SETTLEMENT", payload: { id, status } });
+        toast(`Status updated (Saved offline)`, "#FFD84D");
+      } else {
+        toast("DB Error: " + e.message, "#FF5C39");
+        if (existing) {
+          update((s) => ({
+            ...s,
+            settlements: s.settlements.map((sett) => (sett.id === id ? existing : sett)),
+          }));
+        }
+        return;
+      }
+    }
     const set = state.settlements.find(s => s.id === id);
     if (set) {
         actions.pushNotification({
@@ -926,8 +1061,11 @@ export function netFor(groupId: string, memberId: string): number {
   let net = 0;
   for (const b of bills) {
     const paid = truncateMoney(b.payers[memberId] || 0);
-    const splitCount = b.splitAmong.length || 1;
-    const share = b.splitAmong.includes(memberId) ? truncateMoney(b.amount / splitCount) : 0;
+    let share = 0;
+    if (b.splitAmong.length > 0) {
+      const idx = b.splitAmong.indexOf(memberId);
+      if (idx >= 0) share = splitEqual(b.amount, b.splitAmong.length)[idx];
+    }
     net = truncateMoney(net + (paid - share));
   }
   // Settlements: "from" paid money to "to"
@@ -1008,20 +1146,21 @@ export function simplifyDebts(groupId: string): DebtEdge[] {
 }
 
 export function getBillEdges(b: Bill, g: Group): DebtEdge[] {
-  const splitCount = b.splitAmong.length || 1;
-  const perHead = truncateMoney(b.amount / splitCount);
+  const shares = b.splitAmong.length > 0 ? splitEqual(b.amount, b.splitAmong.length) : [];
 
   const nets: { id: string, name: string, color: string, net: number }[] = [];
 
   for (const m of g.members) {
     const paid = truncateMoney(b.payers[m.id] || 0);
-    const share = b.splitAmong.includes(m.id) ? perHead : 0;
+    const idx = b.splitAmong.indexOf(m.id);
+    const share = idx >= 0 ? shares[idx] : 0;
     nets.push({ id: m.id, name: m.name, color: m.color, net: truncateMoney(paid - share) });
   }
 
   for (const [id, paid] of Object.entries(b.payers)) {
     if (!g.members.find(m => m.id === id)) {
-      const share = b.splitAmong.includes(id) ? perHead : 0;
+      const idx = b.splitAmong.indexOf(id);
+      const share = idx >= 0 ? shares[idx] : 0;
       nets.push({ id, name: id === "me" ? "You" : id, color: "#ccc", net: truncateMoney(paid - share) });
     }
   }

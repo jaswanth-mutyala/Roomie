@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { actions, Group, Bill, Settlement, RecurringBill, Member } from "../app/store";
+import { actions, Group, Bill, Settlement, RecurringBill, Member, useStore } from "../app/store";
 import { toast } from "sonner";
 
 let notificationChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -7,7 +7,7 @@ let notificationChannel: ReturnType<typeof supabase.channel> | null = null;
 export async function initialFetch() {
   console.log("Fetching data from Supabase...");
 
-  actions.hydrateStore({ isLoading: true, error: null });
+  useStore.setState(s => ({ ...s, isLoading: true, error: null }));
 
   try {
     const { data: { session }, error: authError } = await supabase.auth.getSession();
@@ -50,7 +50,7 @@ export async function initialFetch() {
     if (notifError) throw new Error(`Notifications fetch failed: ${notifError.message}`);
 
     if (!groupsData) {
-      actions.hydrateStore({ isLoading: false });
+      useStore.setState(s => ({ ...s, isLoading: false }));
       return;
     }
 
@@ -97,7 +97,6 @@ export async function initialFetch() {
       to: s.to_user,
       amount: Number(s.amount),
       date: s.date,
-      status: s.status || 'pending',
     }));
 
     const reconstructedRecurring: RecurringBill[] = (recurringData || []).map((r: any) => ({
@@ -150,7 +149,8 @@ export async function initialFetch() {
               unread: n.unread,
               action: n.action_type ? { type: n.action_type, id: n.action_id, groupId: n.action_group_id } : undefined,
             };
-            actions.hydrateStore(s => ({ 
+            useStore.setState(s => ({ 
+              ...s, 
               notifications: [notif, ...s.notifications],
               unreadCount: (s.unreadCount || 0) + 1
             }));
@@ -191,10 +191,11 @@ export async function initialFetch() {
 
   } catch (error) {
     console.error("Initial fetch failed:", error);
-    actions.hydrateStore({ 
+    useStore.setState(s => ({ 
+      ...s, 
       isLoading: false, 
       error: error instanceof Error ? error.message : "Failed to load data" 
-    });
+    }));
     toast.error(error instanceof Error ? error.message : "Failed to load data");
   }
 }
