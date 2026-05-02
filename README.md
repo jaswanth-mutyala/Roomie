@@ -1,7 +1,7 @@
 
   # Roomie app ui/ux
 
-  This is a code bundle for Roomie app ui/ux. The original project is available at https://www.figma.com/design/XtrnqdFertVZSnJJNtvk2L/Roomie-app-ui-ux.
+  Roomie app is available at https://roomie-split-app.vercel.app/.
 
   ## Running the code
 
